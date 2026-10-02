@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>כושרמט — הרשמה</title>
-<link rel="stylesheet" href="css/style.css?v=38">
+<link rel="stylesheet" href="css/style.css?v=39">
 </head>
 <body>
 <div class="center-page page-enter">
@@ -20,19 +20,23 @@
     <form id="form-signup" class="flex flex-col gap-1" novalidate>
       <div>
         <label for="signup-username">שם משתמש</label>
-        <input type="text" id="signup-username" required minlength="3" maxlength="30" autocomplete="username" placeholder="אביר_הלילה">
+        <input type="text" id="signup-username" required minlength="3" maxlength="30"
+               autocomplete="username" placeholder="אביר_הלילה">
       </div>
       <div>
         <label for="signup-email">אימייל</label>
-        <input type="email" id="signup-email" required autocomplete="email" placeholder="you@example.com">
+        <input type="email" id="signup-email" required autocomplete="email"
+               placeholder="you@example.com">
       </div>
       <div>
         <label for="signup-password">סיסמה</label>
-        <input type="password" id="signup-password" required minlength="6" autocomplete="new-password" placeholder="לפחות 6 תווים">
+        <input type="password" id="signup-password" required minlength="6"
+               autocomplete="new-password" placeholder="לפחות 6 תווים">
       </div>
       <div>
         <label for="signup-password-confirm">אימות סיסמה</label>
-        <input type="password" id="signup-password-confirm" required minlength="6" autocomplete="new-password" placeholder="הקלד שוב את הסיסמה">
+        <input type="password" id="signup-password-confirm" required minlength="6"
+               autocomplete="new-password" placeholder="הקלד שוב את הסיסמה">
       </div>
       <button id="signup-button" type="submit" class="btn btn-accent btn-block mt-1">צור חשבון</button>
     </form>
@@ -48,14 +52,10 @@
   </div>
 </div>
 
+<!-- SDK משותף + לקוח Supabase מרכזי. אין ליצור לקוח נוסף בדף הזה. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="js/supabaseClient.js?v=2"></script>
 <script>
-const SUPABASE_URL = "https://ibzlbpbsqyfpmwomxbgm.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_mtYSf_WBf9xsDQKa0BsP8Q_-o9TsNVg";
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true }
-});
-
 function toast(message, type = "") {
   let container = document.getElementById("toast-container");
   if (!container) {
@@ -70,80 +70,119 @@ function toast(message, type = "") {
   setTimeout(() => item.remove(), 6000);
 }
 
+function setSignupButton(button, disabled, text) {
+  button.disabled = disabled;
+  button.textContent = text;
+}
+
 (async () => {
   try {
-    const { data } = await sb.auth.getSession();
-    if (data && data.session) location.href = "lobby.html";
-  } catch (_) {}
+    const { data, error } = await sb.auth.getSession();
+    if (!error && data && data.session) {
+      window.location.href = "lobby.html";
+    }
+  } catch (error) {
+    console.warn("getSession failed:", error);
+  }
 })();
 
 document.getElementById("form-signup").addEventListener("submit", async (event) => {
   event.preventDefault();
 
   const button = document.getElementById("signup-button");
-  const username = document.getElementById("signup-username").value.trim();
-  const email = document.getElementById("signup-email").value.trim();
-  const password = document.getElementById("signup-password").value;
-  const confirm = document.getElementById("signup-password-confirm").value;
+  const usernameInput = document.getElementById("signup-username");
+  const emailInput = document.getElementById("signup-email");
+  const passwordInput = document.getElementById("signup-password");
+  const confirmInput = document.getElementById("signup-password-confirm");
+
+  const username = usernameInput.value.trim();
+  const email = emailInput.value.trim();
+  const password = passwordInput.value;
+  const confirm = confirmInput.value;
 
   if (username.length < 3) {
     toast("שם המשתמש חייב להכיל לפחות 3 תווים", "error");
+    usernameInput.focus();
     return;
   }
+
+  if (!emailInput.checkValidity()) {
+    toast("הזן כתובת אימייל תקינה", "error");
+    emailInput.focus();
+    return;
+  }
+
   if (password.length < 6) {
     toast("הסיסמה חייבת להכיל לפחות 6 תווים", "error");
+    passwordInput.focus();
     return;
   }
+
   if (password !== confirm) {
     toast("הסיסמאות אינן זהות", "error");
+    confirmInput.focus();
     return;
   }
 
-  button.disabled = true;
-  button.textContent = "נרשם...";
+  setSignupButton(button, true, "נרשם...");
 
   try {
-    const { data, error } = await sb.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { username },
-        emailRedirectTo: location.origin + "/auth.html"
-      }
-    });
+    const { data, error } = await withRetry(
+      () => sb.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { username },
+          emailRedirectTo: window.location.origin + "/auth.html"
+        }
+      }),
+      1,
+      1200
+    );
 
     if (error) {
       console.error("Supabase signup error:", error);
-      let message = error.message || "שגיאה לא ידועה";
-      if (/already registered|already exists|user already/i.test(message)) {
-        message = "כתובת האימייל הזו כבר רשומה במערכת.";
+
+      const raw = String(error.message || "");
+      if (/already registered|already exists|user already/i.test(raw)) {
+        toast("כתובת האימייל הזו כבר רשומה במערכת.", "error");
+      } else if (/redirect|url/i.test(raw)) {
+        toast("ההרשמה נכשלה בגלל כתובת ההפניה. יש לבדוק את כתובת האתר בהגדרות Supabase.", "error");
+      } else {
+        toast("שגיאה בהרשמה: " + (raw || "שגיאה לא ידועה"), "error");
       }
-      toast("שגיאה בהרשמה: " + message, "error");
-      button.disabled = false;
-      button.textContent = "צור חשבון";
+
+      setSignupButton(button, false, "צור חשבון");
       return;
     }
 
     if (!data || !data.user) {
       toast("ההרשמה לא הושלמה. נסה שוב.", "error");
-      button.disabled = false;
-      button.textContent = "צור חשבון";
+      setSignupButton(button, false, "צור חשבון");
       return;
     }
 
     if (data.session) {
       toast("החשבון נוצר בהצלחה!", "success");
-      setTimeout(() => location.href = "lobby.html", 700);
+      setTimeout(() => {
+        window.location.href = "lobby.html";
+      }, 700);
     } else {
       toast("החשבון נוצר. בדוק את האימייל ואשר את החשבון כדי להתחבר.", "success");
-      button.disabled = false;
-      button.textContent = "צור חשבון";
+      setSignupButton(button, false, "צור חשבון");
     }
   } catch (error) {
     console.error("Signup exception:", error);
-    toast("שגיאה בחיבור לשרת: " + (error && error.message ? error.message : String(error)), "error");
-    button.disabled = false;
-    button.textContent = "צור חשבון";
+
+    let message = "לא התקבלה תגובה משרת האימות.";
+    if (error && error.name === "AbortError") {
+      message = "החיבור לשרת האימות ארך זמן רב מדי. בדוק את האינטרנט ונסה שוב.";
+    } else if (error && error.message) {
+      message = error.message;
+    }
+
+    toast("שגיאה בחיבור לשרת: " + message, "error");
+    setSignupButton(button, false, "צור חשבון");
   }
 });
 </script>
