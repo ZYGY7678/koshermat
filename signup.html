@@ -41,6 +41,8 @@
       <button id="signup-button" type="submit" class="btn btn-accent btn-block mt-1">צור חשבון</button>
     </form>
 
+    <div id="connection-status" class="muted text-center" style="font-size:12px;margin-top:12px;min-height:18px"></div>
+
     <div class="text-center mt-2" style="padding-top:16px;border-top:1px solid var(--border)">
       <div class="muted" style="font-size:13px;margin-bottom:8px">כבר יש לך חשבון?</div>
       <a href="auth.html" class="btn btn-ghost btn-block">חזרה להתחברות</a>
@@ -67,7 +69,7 @@ function toast(message, type = "") {
   item.className = "toast " + type;
   item.textContent = message;
   container.appendChild(item);
-  setTimeout(() => item.remove(), 6000);
+  setTimeout(() => item.remove(), 7000);
 }
 
 function setSignupButton(button, disabled, text) {
@@ -75,14 +77,108 @@ function setSignupButton(button, disabled, text) {
   button.textContent = text;
 }
 
+function setConnectionStatus(text) {
+  const el = document.getElementById("connection-status");
+  if (el) el.textContent = text || "";
+}
+
+async function diagnoseSupabaseConnection() {
+  const started = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const response = await fetch(
+      SUPABASE_URL + "/auth/v1/settings",
+      {
+        method: "GET",
+        headers: {
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": "Bearer " + SUPABASE_ANON_KEY
+        },
+        cache: "no-store",
+        signal: controller.signal
+      }
+    );
+
+    const elapsed = Date.now() - started;
+    let body = "";
+    try { body = await response.text(); } catch (_) {}
+
+    if (response.ok) {
+      setConnectionStatus("חיבור לשרת האימות תקין.");
+      return { ok: true, status: response.status, elapsed };
+    }
+
+    console.error("Supabase preflight HTTP error:", {
+      status: response.status,
+      statusText: response.statusText,
+      body
+    });
+
+    return {
+      ok: false,
+      kind: "http",
+      status: response.status,
+      statusText: response.statusText,
+      body,
+      elapsed
+    };
+  } catch (error) {
+    const elapsed = Date.now() - started;
+    console.error("Supabase preflight network error:", {
+      name: error && error.name,
+      message: error && error.message,
+      cause: error && error.cause
+    });
+
+    return {
+      ok: false,
+      kind: error && error.name === "AbortError" ? "timeout" : "network",
+      name: error && error.name,
+      message: error && error.message,
+      cause: error && error.cause,
+      elapsed
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function formatDiagnosticError(result) {
+  if (!result) return "לא התקבלה תוצאת בדיקה.";
+
+  if (result.kind === "timeout") {
+    return "השרת לא הגיב בתוך 10 שניות (Timeout).";
+  }
+
+  if (result.kind === "network") {
+    return "הדפדפן לא מצליח להגיע לשרת האימות (Network/CORS/DNS).";
+  }
+
+  if (result.kind === "http") {
+    return "שרת האימות החזיר HTTP " + result.status + (result.statusText ? " (" + result.statusText + ")" : "") + ".";
+  }
+
+  return "חיבור לא תקין לשרת האימות.";
+}
+
 (async () => {
   try {
     const { data, error } = await sb.auth.getSession();
     if (!error && data && data.session) {
       window.location.href = "lobby.html";
+      return;
     }
   } catch (error) {
     console.warn("getSession failed:", error);
+  }
+
+  const result = await diagnoseSupabaseConnection();
+  if (!result.ok) {
+    const message = formatDiagnosticError(result);
+    setConnectionStatus(message);
+    console.warn("Supabase connection diagnostic:", result);
   }
 })();
 
@@ -124,9 +220,22 @@ document.getElementById("form-signup").addEventListener("submit", async (event) 
     return;
   }
 
-  setSignupButton(button, true, "נרשם...");
+  setSignupButton(button, true, "בודק חיבור...");
 
   try {
+    const diagnostic = await diagnoseSupabaseConnection();
+
+    if (!diagnostic.ok) {
+      const detail = formatDiagnosticError(diagnostic);
+      setConnectionStatus(detail);
+      toast("אין חיבור תקין לשרת האימות: " + detail, "error");
+      setSignupButton(button, false, "צור חשבון");
+      return;
+    }
+
+    setSignupButton(button, true, "נרשם...");
+    setConnectionStatus("מתחבר לשרת האימות...");
+
     const { data, error } = await withRetry(
       () => sb.auth.signUp({
         email,
@@ -142,25 +251,38 @@ document.getElementById("form-signup").addEventListener("submit", async (event) 
 
     if (error) {
       console.error("Supabase signup error:", error);
+      console.error("Supabase signup error details:", {
+        name: error.name,
+        message: error.message,
+        code: error.code,
+        status: error.status,
+        cause: error.cause
+      });
 
       const raw = String(error.message || "");
       if (/already registered|already exists|user already/i.test(raw)) {
         toast("כתובת האימייל הזו כבר רשומה במערכת.", "error");
       } else if (/redirect|url/i.test(raw)) {
         toast("ההרשמה נכשלה בגלל כתובת ההפניה. יש לבדוק את כתובת האתר בהגדרות Supabase.", "error");
+      } else if (error.name === "AuthRetryableFetchError" || /failed to fetch|fetch/i.test(raw)) {
+        toast("שרת האימות לא החזיר תשובה. בדיקת החיבור עברה, לכן צריך לבדוק את תגובת Auth עצמה.", "error");
       } else {
         toast("שגיאה בהרשמה: " + (raw || "שגיאה לא ידועה"), "error");
       }
 
+      setConnectionStatus("בדיקת החיבור הסתיימה; ההרשמה עצמה החזירה שגיאה.");
       setSignupButton(button, false, "צור חשבון");
       return;
     }
 
     if (!data || !data.user) {
       toast("ההרשמה לא הושלמה. נסה שוב.", "error");
+      setConnectionStatus("שרת האימות לא החזיר משתמש.");
       setSignupButton(button, false, "צור חשבון");
       return;
     }
+
+    setConnectionStatus("ההרשמה התקבלה בהצלחה.");
 
     if (data.session) {
       toast("החשבון נוצר בהצלחה!", "success");
@@ -173,15 +295,25 @@ document.getElementById("form-signup").addEventListener("submit", async (event) 
     }
   } catch (error) {
     console.error("Signup exception:", error);
+    console.error("Signup exception details:", {
+      name: error && error.name,
+      message: error && error.message,
+      code: error && error.code,
+      status: error && error.status,
+      cause: error && error.cause
+    });
 
     let message = "לא התקבלה תגובה משרת האימות.";
     if (error && error.name === "AbortError") {
       message = "החיבור לשרת האימות ארך זמן רב מדי. בדוק את האינטרנט ונסה שוב.";
+    } else if (error && (error.name === "AuthRetryableFetchError" || /failed to fetch/i.test(String(error.message || "")))) {
+      message = "הדפדפן לא קיבל תשובת Auth מ-Supabase. בדיקת החיבור הראשונית עברה, ולכן זו אינה שגיאת טופס.";
     } else if (error && error.message) {
       message = error.message;
     }
 
     toast("שגיאה בחיבור לשרת: " + message, "error");
+    setConnectionStatus(message);
     setSignupButton(button, false, "צור חשבון");
   }
 });
