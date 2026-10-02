@@ -1,13 +1,151 @@
-<!DOCTYPE html><html lang="he" dir="rtl"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>כושרמט — הרשמה</title><link rel="stylesheet" href="css/style.css?v=37"></head><body>
-<div class="center-page page-enter"><div class="card" style="width:100%;max-width:420px"><div class="text-center mt-1" style="margin-bottom:22px"><div style="font-size:44px">♞</div><div class="brand-text" style="font-size:26px;font-weight:900">כושרמט</div><div class="muted" style="font-size:14px">שחמט. תחרות. קהילה.</div></div>
-<div class="section-title text-center" style="margin-bottom:18px">יצירת חשבון חדש</div>
-<form id="form-signup" class="flex flex-col gap-1"><div><label>שם משתמש</label><input type="text" id="signup-username" required minlength="3" placeholder="אביר_הלילה"></div><div><label>אימייל</label><input type="email" id="signup-email" required placeholder="you@example.com"></div><div><label>סיסמה</label><input type="password" id="signup-password" required minlength="6" placeholder="••••••••"></div><button type="submit" class="btn btn-accent btn-block mt-1">צור חשבון</button></form>
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>כושרמט — הרשמה</title>
+<link rel="stylesheet" href="css/style.css?v=38">
+</head>
+<body>
+<div class="center-page page-enter">
+  <div class="card" style="width:100%;max-width:420px">
+    <div class="text-center mt-1" style="margin-bottom:22px">
+      <div style="font-size:44px">♞</div>
+      <div class="brand-text" style="font-size:26px;font-weight:900">כושרמט</div>
+      <div class="muted" style="font-size:14px">שחמט. תחרות. קהילה.</div>
+    </div>
 
-<div class="text-center mt-2" style="padding-top:16px;border-top:1px solid var(--border)"><div class="muted" style="font-size:13px;margin-bottom:8px">כבר יש לך חשבון?</div><a href="auth.html" class="btn btn-ghost btn-block">חזרה להתחברות</a></div><a href="signup.html" class="btn btn-accent btn-block">הרשמה</a></div>
-<p class="text-center mt-2"><a href="emergency-access.html" class="linklike" style="font-size:12px">כניסה למורשים</a></p></div></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script>
-const SUPABASE_URL="https://ibzlbpbsqyfpmwomxbgm.supabase.co",SUPABASE_PUBLISHABLE_KEY="sb_publishable_mtYSf_WBf9xsDQKa0BsP8Q_-o9TsNVg";
-const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY,{auth:{persistSession:true,autoRefreshToken:true}});
-function toast(m,t=""){let c=document.getElementById("toast-container");if(!c){c=document.createElement("div");c.id="toast-container";document.body.appendChild(c)}let e=document.createElement("div");e.className=`toast ${t}`;e.textContent=m;c.appendChild(e);setTimeout(()=>e.remove(),4500)}
-(async()=>{const{data:{session}}=await sb.auth.getSession();if(session)location.href="lobby.html"})();
-document.getElementById("form-signup").addEventListener("submit",async e=>{e.preventDefault();const b=e.currentTarget.querySelector("button[type=submit]"),username=document.getElementById("signup-username").value.trim(),email=document.getElementById("signup-email").value.trim(),password=document.getElementById("signup-password").value;if(username.length<3){toast("שם המשתמש חייב להכיל לפחות 3 תווים","error");return}b.disabled=true;b.textContent="נרשם...";try{const{data,error}=await sb.auth.signUp({email,password,options:{data:{username}}});if(error){toast("שגיאה בהרשמה: "+error.message,"error");b.disabled=false;b.textContent="צור חשבון";return}toast(data.session?"נרשמת בהצלחה!":"נרשמת! בדוק את המייל אם נדרש אימות.","success");if(data.session)setTimeout(()=>location.href="lobby.html",700)}catch(err){toast("שגיאה בחיבור לשרת: "+(err?.message||String(err)),"error");b.disabled=false;b.textContent="צור חשבון"}});</script></body></html>
+    <div class="section-title text-center" style="margin-bottom:18px">יצירת חשבון חדש</div>
+
+    <form id="form-signup" class="flex flex-col gap-1" novalidate>
+      <div>
+        <label for="signup-username">שם משתמש</label>
+        <input type="text" id="signup-username" required minlength="3" maxlength="30" autocomplete="username" placeholder="אביר_הלילה">
+      </div>
+      <div>
+        <label for="signup-email">אימייל</label>
+        <input type="email" id="signup-email" required autocomplete="email" placeholder="you@example.com">
+      </div>
+      <div>
+        <label for="signup-password">סיסמה</label>
+        <input type="password" id="signup-password" required minlength="6" autocomplete="new-password" placeholder="לפחות 6 תווים">
+      </div>
+      <div>
+        <label for="signup-password-confirm">אימות סיסמה</label>
+        <input type="password" id="signup-password-confirm" required minlength="6" autocomplete="new-password" placeholder="הקלד שוב את הסיסמה">
+      </div>
+      <button id="signup-button" type="submit" class="btn btn-accent btn-block mt-1">צור חשבון</button>
+    </form>
+
+    <div class="text-center mt-2" style="padding-top:16px;border-top:1px solid var(--border)">
+      <div class="muted" style="font-size:13px;margin-bottom:8px">כבר יש לך חשבון?</div>
+      <a href="auth.html" class="btn btn-ghost btn-block">חזרה להתחברות</a>
+    </div>
+
+    <p class="text-center mt-2">
+      <a href="emergency-access.html" class="linklike" style="font-size:12px">כניסה למורשים</a>
+    </p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = "https://ibzlbpbsqyfpmwomxbgm.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_mtYSf_WBf9xsDQKa0BsP8Q_-o9TsNVg";
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true }
+});
+
+function toast(message, type = "") {
+  let container = document.getElementById("toast-container");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "toast-container";
+    document.body.appendChild(container);
+  }
+  const item = document.createElement("div");
+  item.className = "toast " + type;
+  item.textContent = message;
+  container.appendChild(item);
+  setTimeout(() => item.remove(), 6000);
+}
+
+(async () => {
+  try {
+    const { data } = await sb.auth.getSession();
+    if (data && data.session) location.href = "lobby.html";
+  } catch (_) {}
+})();
+
+document.getElementById("form-signup").addEventListener("submit", async (event) => {
+  event.preventDefault();
+
+  const button = document.getElementById("signup-button");
+  const username = document.getElementById("signup-username").value.trim();
+  const email = document.getElementById("signup-email").value.trim();
+  const password = document.getElementById("signup-password").value;
+  const confirm = document.getElementById("signup-password-confirm").value;
+
+  if (username.length < 3) {
+    toast("שם המשתמש חייב להכיל לפחות 3 תווים", "error");
+    return;
+  }
+  if (password.length < 6) {
+    toast("הסיסמה חייבת להכיל לפחות 6 תווים", "error");
+    return;
+  }
+  if (password !== confirm) {
+    toast("הסיסמאות אינן זהות", "error");
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "נרשם...";
+
+  try {
+    const { data, error } = await sb.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { username },
+        emailRedirectTo: location.origin + "/auth.html"
+      }
+    });
+
+    if (error) {
+      console.error("Supabase signup error:", error);
+      let message = error.message || "שגיאה לא ידועה";
+      if (/already registered|already exists|user already/i.test(message)) {
+        message = "כתובת האימייל הזו כבר רשומה במערכת.";
+      }
+      toast("שגיאה בהרשמה: " + message, "error");
+      button.disabled = false;
+      button.textContent = "צור חשבון";
+      return;
+    }
+
+    if (!data || !data.user) {
+      toast("ההרשמה לא הושלמה. נסה שוב.", "error");
+      button.disabled = false;
+      button.textContent = "צור חשבון";
+      return;
+    }
+
+    if (data.session) {
+      toast("החשבון נוצר בהצלחה!", "success");
+      setTimeout(() => location.href = "lobby.html", 700);
+    } else {
+      toast("החשבון נוצר. בדוק את האימייל ואשר את החשבון כדי להתחבר.", "success");
+      button.disabled = false;
+      button.textContent = "צור חשבון";
+    }
+  } catch (error) {
+    console.error("Signup exception:", error);
+    toast("שגיאה בחיבור לשרת: " + (error && error.message ? error.message : String(error)), "error");
+    button.disabled = false;
+    button.textContent = "צור חשבון";
+  }
+});
+</script>
+</body>
+</html>
