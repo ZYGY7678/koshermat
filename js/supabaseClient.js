@@ -1,7 +1,7 @@
 // ==========================================================
 // חיבור ל-Supabase
 // ==========================================================
-const SUPABASE_URL = "https://ibzlbpbsqyfpmwomxbgm.supabase.co";
+const SUPABASE_URL = "https://koshermat-auth-api.onrender.com/supabase";
 const SUPABASE_ANON_KEY = "sb_publishable_mtYSf_WBf9xsDQKa0BsP8Q_-o9TsNVg";
 
 // עוטפים את fetch בטיימאאוט - כדי שאף בקשה לשרת (התחברות, הרשמה, מהלכים,
