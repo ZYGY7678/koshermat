@@ -1,4 +1,6 @@
 const http = require("http");
+const https = require("https");
+const dns = require("dns");
 
 const PORT = Number(process.env.PORT || 3000);
 const SUPABASE_URL = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
@@ -41,6 +43,57 @@ function readRequestBody(req) {
   });
 }
 
+function requestSupabase(targetUrl, options, body) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(targetUrl);
+    dns.lookup(url.hostname, { family: 4 }, (dnsError, address) => {
+      if (dnsError) {
+        dnsError.stage = "dns";
+        reject(dnsError);
+        return;
+      }
+
+      const requestOptions = {
+        protocol: url.protocol,
+        hostname: address,
+        servername: url.hostname,
+        port: Number(url.port || 443),
+        method: options.method,
+        path: url.pathname + url.search,
+        headers: { ...options.headers },
+        timeout: 30000,
+        family: 4
+      };
+
+      const upstreamReq = https.request(requestOptions, upstream => {
+        const chunks = [];
+        upstream.on("data", chunk => chunks.push(chunk));
+        upstream.on("end", () => {
+          resolve({
+            status: upstream.statusCode,
+            headers: upstream.headers,
+            body: Buffer.concat(chunks)
+          });
+        });
+      });
+
+      upstreamReq.on("timeout", () => {
+        const error = new Error("Supabase upstream request timed out");
+        error.code = "ETIMEDOUT";
+        upstreamReq.destroy(error);
+      });
+
+      upstreamReq.on("error", error => {
+        if (!error.stage) error.stage = "https";
+        reject(error);
+      });
+
+      if (body) upstreamReq.write(body);
+      upstreamReq.end();
+    });
+  });
+}
+
 async function proxyToSupabase(req, res, requestOrigin) {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     json(res, 500, { message: "Auth proxy is not configured." }, requestOrigin);
@@ -70,27 +123,24 @@ async function proxyToSupabase(req, res, requestOrigin) {
   const timer = setTimeout(() => controller.abort(), 30000);
 
   try {
-    const upstream = await fetch(targetUrl, {
-      method: req.method,
-      headers,
-      body,
-      redirect: "manual",
-      signal: controller.signal
-    });
+    const upstream = await requestSupabase(
+      targetUrl,
+      { method: req.method, headers },
+      body
+    );
 
     applyCors(res, requestOrigin);
     res.statusCode = upstream.status;
 
-    const contentType = upstream.headers.get("content-type");
-    if (contentType) res.setHeader("Content-Type", contentType);
+    const contentType = upstream.headers["content-type"];
+    if (contentType) res.setHeader("Content-Type", Array.isArray(contentType) ? contentType[0] : contentType);
 
     for (const header of ["content-range", "x-supabase-api-version", "cache-control", "etag", "location"]) {
-      const value = upstream.headers.get(header);
-      if (value) res.setHeader(header, value);
+      const value = upstream.headers[header];
+      if (value) res.setHeader(header, Array.isArray(value) ? value[0] : value);
     }
 
-    const responseBody = Buffer.from(await upstream.arrayBuffer());
-    res.end(responseBody);
+    res.end(upstream.body);
   } catch (error) {
     console.error("Supabase proxy error:", {
       method: req.method,
@@ -103,9 +153,15 @@ async function proxyToSupabase(req, res, requestOrigin) {
       res,
       error && error.name === "AbortError" ? 504 : 502,
       {
-        message: error && error.name === "AbortError"
-          ? "שרת האימות לא הגיב בזמן."
-          : "שרת האימות לא זמין כרגע."
+        message: error && error.code === "ENOTFOUND"
+          ? "לא ניתן לפתור DNS עבור שרת האימות."
+          : error && error.code === "ETIMEDOUT"
+          ? "החיבור לשרת האימות פג."
+          : error && error.code
+          ? "חיבור לשרת האימות נכשל (" + error.code + ")."
+          : "שרת האימות לא זמין כרגע.",
+        code: error && error.code ? error.code : null,
+        stage: error && error.stage ? error.stage : null
       },
       requestOrigin
     );
