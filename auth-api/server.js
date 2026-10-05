@@ -60,7 +60,7 @@ function requestSupabase(targetUrl, options, body) {
         port: Number(url.port || 443),
         method: options.method,
         path: url.pathname + url.search,
-        headers: { ...options.headers },
+        headers: { ...options.headers, Host: url.hostname },
         timeout: 30000,
         family: 4
       };
